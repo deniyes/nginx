@@ -174,7 +174,7 @@ ngx_create_temp_file(ngx_file_t *file, ngx_path_t *path, ngx_pool_t *pool,
                        "temp fd:%d", file->fd);
 
         if (file->fd != NGX_INVALID_FILE) {
-
+			//此处注册清理函数，会关闭句柄，在ngx_destroy_pool(r->pool)时调用
             cln->handler = clean ? ngx_pool_delete_file : ngx_pool_cleanup_file;
             clnf = cln->data;
 

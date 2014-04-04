@@ -699,11 +699,11 @@ ngx_http_upstream_cache(ngx_http_request_t *r, ngx_http_upstream_t *u)
         if (r->method & NGX_HTTP_HEAD) {
             u->method = ngx_http_core_get_method;
         }
-
+		//创建c->cache数据结构
         if (ngx_http_file_cache_new(r) != NGX_OK) {
             return NGX_ERROR;
         }
-
+		//根据配置，设置r->cache->key
         if (u->create_key(r) != NGX_OK) {
             return NGX_ERROR;
         }
@@ -724,7 +724,7 @@ ngx_http_upstream_cache(ngx_http_request_t *r, ngx_http_upstream_t *u)
         }
 
         u->cacheable = 1;
-
+		//利用cache_bypass配置项进行过滤
         switch (ngx_http_test_predicates(r, u->conf->cache_bypass)) {
 
         case NGX_ERROR:
@@ -742,9 +742,9 @@ ngx_http_upstream_cache(ngx_http_request_t *r, ngx_http_upstream_t *u)
 
         c->min_uses = u->conf->cache_min_uses;
         c->body_start = u->conf->buffer_size;
-        c->file_cache = u->conf->cache->data;
+        c->file_cache = u->conf->cache->data;   //c->file_cache指向location配置的cache
 
-        c->lock = u->conf->cache_lock;
+        c->lock = u->conf->cache_lock;          //cache操作的时候，是否进行上锁
         c->lock_timeout = u->conf->cache_lock_timeout;
 
         u->cache_status = NGX_HTTP_CACHE_MISS;
@@ -827,7 +827,7 @@ ngx_http_upstream_cache(ngx_http_request_t *r, ngx_http_upstream_t *u)
 
         return rc;
     }
-
+	//cache文件发送完成后，r->cached设置为0
     r->cached = 0;
 
     return NGX_DECLINED;
@@ -1642,7 +1642,7 @@ ngx_http_upstream_process_header(ngx_http_request_t *r, ngx_http_upstream_t *u)
 #if (NGX_HTTP_CACHE)
 
         if (r->cache) {
-            u->buffer.pos += r->cache->header_start;
+            u->buffer.pos += r->cache->header_start;   //假如在cache开启的情况下，pos前移，留出空前写入相关信息
             u->buffer.last = u->buffer.pos;
         }
 #endif
@@ -2215,7 +2215,7 @@ ngx_http_upstream_send_response(ngx_http_request_t *r, ngx_http_upstream_t *u)
     }
 
     c = r->connection;
-
+    //r->header_only会在发送头部信息过程中设置
     if (r->header_only) {
 
         if (u->cacheable || u->store) {
@@ -2317,7 +2317,7 @@ ngx_http_upstream_send_response(ngx_http_request_t *r, ngx_http_upstream_t *u)
         ngx_pool_run_cleanup_file(r->pool, r->cache->file.fd);
         r->cache->file.fd = NGX_INVALID_FILE;
     }
-
+    //验证是否no_cache的情况下
     switch (ngx_http_test_predicates(r, u->conf->no_cache)) {
 
     case NGX_ERROR:
@@ -2331,11 +2331,11 @@ ngx_http_upstream_send_response(ngx_http_request_t *r, ngx_http_upstream_t *u)
     default: /* NGX_OK */
 
         if (u->cache_status == NGX_HTTP_CACHE_BYPASS) {
-
+			
             r->cache->min_uses = u->conf->cache_min_uses;
             r->cache->body_start = u->conf->buffer_size;
             r->cache->file_cache = u->conf->cache->data;
-
+			//假如属于bypass但不是no_cache,则此处创建r->cache以及node信息
             if (ngx_http_file_cache_create(r) != NGX_OK) {
                 ngx_http_upstream_finalize_request(r, u, NGX_ERROR);
                 return;
@@ -2344,14 +2344,14 @@ ngx_http_upstream_send_response(ngx_http_request_t *r, ngx_http_upstream_t *u)
 
         break;
     }
-
+	//在处理upstream响应头部的时候，根据cache-control，expire等，设置u->cacheable
     if (u->cacheable) {
         time_t  now, valid;
 
         now = ngx_time();
 
         valid = r->cache->valid_sec;
-
+		//对比配置文件中配置的cache valid，比如proxy_cache_valid  200 302  10m;
         if (valid == 0) {
             valid = ngx_http_file_cache_valid(u->conf->cache_valid,
                                               u->headers_in.status_n);
@@ -2364,7 +2364,7 @@ ngx_http_upstream_send_response(ngx_http_request_t *r, ngx_http_upstream_t *u)
             r->cache->last_modified = r->headers_out.last_modified_time;
             r->cache->date = now;
             r->cache->body_start = (u_short) (u->buffer.pos - u->buffer.start);
-
+			//此处实际在设置cache文件的头部信息
             ngx_http_file_cache_set_header(r, u->buffer.start);
 
         } else {
@@ -2375,7 +2375,7 @@ ngx_http_upstream_send_response(ngx_http_request_t *r, ngx_http_upstream_t *u)
 
     ngx_log_debug1(NGX_LOG_DEBUG_HTTP, c->log, 0,
                    "http cacheable: %d", u->cacheable);
-
+	//假如cacheable为0，并且r->cache的情况下，清理cache前期创建的相关结构信息
     if (u->cacheable == 0 && r->cache) {
         ngx_http_file_cache_free(r->cache, u->pipe->temp_file);
     }
@@ -2395,7 +2395,7 @@ ngx_http_upstream_send_response(ngx_http_request_t *r, ngx_http_upstream_t *u)
     p->log = c->log;
 
     p->cacheable = u->cacheable || u->store;
-
+	//此处创建p->temp_file
     p->temp_file = ngx_pcalloc(r->pool, sizeof(ngx_temp_file_t));
     if (p->temp_file == NULL) {
         ngx_http_upstream_finalize_request(r, u, NGX_ERROR);
@@ -2424,7 +2424,7 @@ ngx_http_upstream_send_response(ngx_http_request_t *r, ngx_http_upstream_t *u)
         ngx_http_upstream_finalize_request(r, u, NGX_ERROR);
         return;
     }
-
+	//u->buffer被设置为p->preread_bufs，实际上这时,md5,key,以及cache的响应头部都在这里
     p->preread_bufs->buf = &u->buffer;
     p->preread_bufs->next = NULL;
     u->buffer.recycled = 1;

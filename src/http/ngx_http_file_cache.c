@@ -248,7 +248,7 @@ ngx_http_file_cache_open(ngx_http_request_t *r)
     ngx_http_core_loc_conf_t  *clcf;
 
     c = r->cache;
-
+	//假如cache被lock,此处直接返回
     if (c->waiting) {
         return NGX_AGAIN;
     }
@@ -278,45 +278,45 @@ ngx_http_file_cache_open(ngx_http_request_t *r)
         return rc;
     }
 
-    if (rc == NGX_AGAIN) {
+    if (rc == NGX_AGAIN) { //cache对应文件不存在(一般是min_uses没达到配置值)，或者min_uses没达到设置值
         return NGX_HTTP_CACHE_SCARCE;
     }
 
-    cold = cache->sh->cold;
+    cold = cache->sh->cold;  //当前cache是否已经完全加载完成
 
     if (rc == NGX_OK) {
 
-        if (c->error) {
+        if (c->error) { //假如是错误页面，直接返回即可
             return c->error;
         }
 
         c->temp_file = 1;
-        test = c->exists ? 1 : 0;
+        test = c->exists ? 1 : 0;  //缓存文件存在，则test 设置为1
         rv = NGX_DECLINED;
 
-    } else { /* rc == NGX_DECLINED */
+    } else { /* rc == NGX_DECLINED *///没有找到cache文件，或者错误页面超时
 
-        if (c->min_uses > 1) {
+        if (c->min_uses > 1) {  //配置的min_uses大于1，
 
-            if (!cold) {
+            if (!cold) {  //设置upstream不进行cache
                 return NGX_HTTP_CACHE_SCARCE;
             }
 
-            test = 1;
+            test = 1;  //假如正在加载，这时可能对应cache文件还没有加载成功，所以这时还是要尝试；
             rv = NGX_HTTP_CACHE_SCARCE;
 
-        } else {
+        } else { //假如min_uses设置为1的情况下，并且整个Cache加载完成，这时可以设置upstream进行cache
             c->temp_file = 1;
             test = cold ? 1 : 0;
             rv = NGX_DECLINED;
         }
     }
-
+	//设置r->cache->file
     if (ngx_http_file_cache_name(r, cache->path) != NGX_OK) {
         return NGX_ERROR;
     }
 
-    if (!test) {
+    if (!test) { //假如test 为0，的话，不查找缓存文件
         goto done;
     }
 
@@ -330,7 +330,7 @@ ngx_http_file_cache_open(ngx_http_request_t *r)
     of.events = clcf->open_file_cache_events;
     of.directio = NGX_OPEN_FILE_DIRECTIO_OFF;
     of.read_ahead = clcf->read_ahead;
-
+	//在静态文件缓存中查找
     if (ngx_open_cached_file(clcf->open_file_cache, &c->file.name, &of, r->pool)
         != NGX_OK)
     {
@@ -352,7 +352,7 @@ ngx_http_file_cache_open(ngx_http_request_t *r)
 
     ngx_log_debug1(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
                    "http file cache fd: %d", of.fd);
-
+	//缓存文件打开，设置fd, 因为缓存可能更改，所以uniq重新设置
     c->file.fd = of.fd;
     c->file.log = r->connection->log;
     c->uniq = of.uniq;
@@ -637,50 +637,50 @@ ngx_http_file_cache_exists(ngx_http_file_cache_t *cache, ngx_http_cache_t *c)
     ngx_shmtx_lock(&cache->shpool->mutex);
 
     fcn = c->node;
-
+	//在cache 中，查找c->key，找到的情况下，返回node节点
     if (fcn == NULL) {
         fcn = ngx_http_file_cache_lookup(cache, c->key);
     }
 
     if (fcn) {
-        ngx_queue_remove(&fcn->queue);
+        ngx_queue_remove(&fcn->queue);  //假如找到，先从队列中删除，因为是LRU
 
         if (c->node == NULL) {
             fcn->uses++;
             fcn->count++;
         }
 
-        if (fcn->error) {
-
-            if (fcn->valid_sec < ngx_time()) {
+        if (fcn->error) { //cache页面是错误页面，因为proxy_cache_valid  404      1m;
+			
+            if (fcn->valid_sec < ngx_time()) { //假如缓存的错误页面已经超时
                 goto renew;
             }
 
             rc = NGX_OK;
 
-            goto done;
+            goto done; //缓存的错误页面没有超时，则返回缓存文件
         }
 
-        if (fcn->exists || fcn->uses >= c->min_uses) {
+        if (fcn->exists || fcn->uses >= c->min_uses) {//节点对应文件存在，或者uses已经大于配置的min_uses
 
             c->exists = fcn->exists;
             if (fcn->body_start) {
-                c->body_start = fcn->body_start;
+                c->body_start = fcn->body_start; //设置c->body_start
             }
 
             rc = NGX_OK;
-
-            goto done;
+ 
+            goto done; //找到
         }
-
+		//fcn对应的cache文件不存在，或者uses没有到达配置值
         rc = NGX_AGAIN;
 
         goto done;
     }
 
     fcn = ngx_slab_alloc_locked(cache->shpool,
-                                sizeof(ngx_http_file_cache_node_t));
-    if (fcn == NULL) {
+                                sizeof(ngx_http_file_cache_node_t)); //从slab里，分配一个node结构
+    if (fcn == NULL) { //假如没有分配成功，则强制超时一些节点
         ngx_shmtx_unlock(&cache->shpool->mutex);
 
         (void) ngx_http_file_cache_forced_expire(cache);
@@ -694,7 +694,7 @@ ngx_http_file_cache_exists(ngx_http_file_cache_t *cache, ngx_http_cache_t *c)
             goto failed;
         }
     }
-
+	//创建节点，uses和count设置为1
     ngx_memcpy((u_char *) &fcn->node.key, c->key, sizeof(ngx_rbtree_key_t));
 
     ngx_memcpy(fcn->key, &c->key[sizeof(ngx_rbtree_key_t)],
@@ -723,7 +723,7 @@ done:
 
     fcn->expire = ngx_time() + cache->inactive;
 
-    ngx_queue_insert_head(&cache->sh->queue, &fcn->queue);
+    ngx_queue_insert_head(&cache->sh->queue, &fcn->queue);  //插入到最前面，因为LRU
 
     c->uniq = fcn->uniq;
     c->error = fcn->error;

@@ -155,7 +155,7 @@ ngx_open_cached_file(ngx_open_file_cache_t *cache, ngx_str_t *name,
 
     of->fd = NGX_INVALID_FILE;
     of->err = 0;
-
+	//cache是open_file_cache设置
     if (cache == NULL) {
 
         if (of->test_only) {
@@ -205,14 +205,14 @@ ngx_open_cached_file(ngx_open_file_cache_t *cache, ngx_str_t *name,
     now = ngx_time();
 
     hash = ngx_crc32_long(name->data, name->len);
-
+	//以文件名查找
     file = ngx_open_file_lookup(cache, name, hash);
 
     if (file) {
 
         file->uses++;
 
-        ngx_queue_remove(&file->queue);
+        ngx_queue_remove(&file->queue); //LRU
 
         if (file->fd == NGX_INVALID_FILE && file->err == 0 && !file->is_dir) {
 
@@ -235,7 +235,7 @@ ngx_open_cached_file(ngx_open_file_cache_t *cache, ngx_str_t *name,
                 && of->disable_symlinks == file->disable_symlinks
                 && of->disable_symlinks_from == file->disable_symlinks_from
 #endif
-            ))
+            )) //找到
         {
             if (file->err == 0) {
 
@@ -272,7 +272,7 @@ ngx_open_cached_file(ngx_open_file_cache_t *cache, ngx_str_t *name,
                        "retest open file: %s, fd:%d, c:%d, e:%d",
                        file->name, file->fd, file->count, file->err);
 
-        if (file->is_dir) {
+        if (file->is_dir) {  //假如文件变成了目录
 
             /*
              * chances that directory became file are very small
@@ -285,7 +285,7 @@ ngx_open_cached_file(ngx_open_file_cache_t *cache, ngx_str_t *name,
 
         of->fd = file->fd;
         of->uniq = file->uniq;
-
+		/* uniq等信息有变化，也就是文件有更新或者已经超时*/
         rc = ngx_open_and_stat_file(name, of, pool->log);
 
         if (rc != NGX_OK && (of->err == 0 || !of->errors)) {
