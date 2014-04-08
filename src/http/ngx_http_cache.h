@@ -57,41 +57,41 @@ typedef struct {
 
 
 struct ngx_http_cache_s {
-    ngx_file_t                       file;
-    ngx_array_t                      keys;
-    uint32_t                         crc32;
-    u_char                           key[NGX_HTTP_CACHE_KEY_LEN];
+    ngx_file_t                       file;  //file信息，主要跟静态缓存有关系
+    ngx_array_t                      keys;  //keys数组
+    uint32_t                         crc32; //crc校验值
+    u_char                           key[NGX_HTTP_CACHE_KEY_LEN]; //根据算法由keys生成的key
 
-    ngx_file_uniq_t                  uniq;
-    time_t                           valid_sec;
-    time_t                           last_modified;
-    time_t                           date;
+    ngx_file_uniq_t                  uniq;   //cache文件的uniq值
+    time_t                           valid_sec; //proxy_cache_valid 200 4h;
+    time_t                           last_modified;  //r->headers_out.last_modify
+    time_t                           date;           //创建cache的时间
 
-    size_t                           header_start;
-    size_t                           body_start;
-    off_t                            length;
-    off_t                            fs_size;
+    size_t                           header_start; //cache文件中header开始的偏移
+    size_t                           body_start; //cache文件中，body开始的偏移
+    off_t                            length;     //打开cache文件的大小，cache读取时使用
+    off_t                            fs_size;    //占用的页面数，cache读取时使用
 
-    ngx_uint_t                       min_uses;
-    ngx_uint_t                       error;
-    ngx_uint_t                       valid_msec;
+    ngx_uint_t                       min_uses;  //配置文件中设置的min_uses;
+    ngx_uint_t                       error;     //error,错误的响应也是可以被缓存的
+    ngx_uint_t                       valid_msec; //没看到具体使用
 
-    ngx_buf_t                       *buf;
+    ngx_buf_t                       *buf;       //发送缓存需要的buf
 
-    ngx_http_file_cache_t           *file_cache;
-    ngx_http_file_cache_node_t      *node;
+    ngx_http_file_cache_t           *file_cache;  //当前location，指向的cache
+    ngx_http_file_cache_node_t      *node;        //在rbtree和queue中的node节点
 
-    ngx_msec_t                       lock_timeout;
+    ngx_msec_t                       lock_timeout;   //cache被lock的超时值
     ngx_msec_t                       wait_time;
 
     ngx_event_t                      wait_event;
 
-    unsigned                         lock:1;
-    unsigned                         waiting:1;
+    unsigned                         lock:1;      //cache是否可以被lock
+    unsigned                         waiting:1;   //当前cache是否正在等待
 
     unsigned                         updated:1;
-    unsigned                         updating:1;
-    unsigned                         exists:1;
+    unsigned                         updating:1;  //表示cache文件需要被update
+    unsigned                         exists:1;    //表示node对应的缓存文件是否存在
     unsigned                         temp_file:1;
 };
 
@@ -119,12 +119,12 @@ typedef struct {
 
 struct ngx_http_file_cache_s {
     ngx_http_file_cache_sh_t        *sh;
-    ngx_slab_pool_t                 *shpool;
+    ngx_slab_pool_t                 *shpool;   //slab
 
-    ngx_path_t                      *path;
+    ngx_path_t                      *path; //cache 的路径
 
-    off_t                            max_size;
-    size_t                           bsize;
+    off_t                            max_size;  //cache设置的最大值
+    size_t                           bsize;   //page_size
 
     time_t                           inactive;
 
